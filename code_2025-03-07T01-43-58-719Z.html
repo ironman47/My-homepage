@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日本語ページ閲覧</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f0f0f0;
+            width: 100%;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: none;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            transition: max-height 0.3s ease-out;
+            overflow-y: auto;
+        }
+        
+        .input-section {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .input-section.expanded {
+            max-height: 120px; /* Adjust for header and padding */
+        }
+        
+        .input-section.collapsed {
+            max-height: 0;
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        		
+        .input-group {
+            margin: 20px 0;
+        }
+        
+        input[type="text"] {
+            width: 70%;
+            padding: 8px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        #toggleContainer {
+            padding: 10px;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        
+        .iframe-container {
+            width: 100%;
+            height: calc(100vh - 120px);
+            transition: height 0.3s ease-out;
+        }
+
+        .expanded.iframe-container {
+            height: 100vh;
+        }
+        
+        .collapsed.iframe-container {
+            height: calc(100vh - 120px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+       
+        <form id="urlForm" onsubmit="return loadURL(event)">
+            <div class="input-section">
+				<h1>日本語ページ閲覧ツール</h1>
+ 
+                <div class="input-group">
+                    <input type="text" id="urlInput" placeholder="https://example.com/">
+                    <button type="submit">読み込む</button>
+                </div>
+            </div>
+        </form>
+
+        <div class="iframe-container" id="iframeContainer"></div>
+    </div>
+    
+    <button id="toggleContainer">▼ 折りたたむ</button>
+
+    <script>
+        function loadURL(event) {
+            event.preventDefault();
+            const url = document.getElementById('urlInput').value;
+            
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                alert('Please enter a valid URL starting with http:// or https://');
+                return false;
+            }
+
+            const iframeContainer = document.getElementById('iframeContainer');
+            const iframe = document.createElement('iframe');
+            iframe.width = '100%';
+            iframe.height = '100%';
+            iframe.allowFullscreen = true;
+            
+            // Set the src to the provided URL
+            iframe.src = url;
+            iframeContainer.appendChild(iframe);
+        }
+
+        document.getElementById('toggleContainer').addEventListener('click', function() {
+            const inputSection = document.querySelector('.input-section');
+            const iframeContainer = document.getElementById('iframeContainer');
+            
+            if (inputSection.classList.contains('collapsed')) {
+                inputSection.classList.remove('collapsed');
+				inputSection.classList.add('expanded');
+				iframeContainer.classList.remove('expanded');
+                iframeContainer.classList.add('collapsed');
+            } else {
+                inputSection.classList.remove('expanded');
+				inputSection.classList.add('collapsed');
+                iframeContainer.classList.remove('collapsed');
+				iframeContainer.classList.add('expanded');
+            }
+        });
+    </script>
+</body>
+</html>
