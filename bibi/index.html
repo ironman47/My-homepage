@@ -2,7 +2,7 @@
 
 
 
-<html id="bibi" lang="ko">
+<html id="bibi">
 
 
 	<head>
@@ -41,8 +41,19 @@
 		</div>
 
 		<script>
-			// Forces the entire page context to register as Korean to Safari
-			document.documentElement.setAttribute('lang', 'ko');
+		    setInterval(() => {
+		        if (document.documentElement.getAttribute('lang') !== 'ko') {
+		            document.documentElement.setAttribute('lang', 'ko');
+		        }
+		        document.querySelectorAll('iframe').forEach(iframe => {
+		            try {
+		                let frameDoc = iframe.contentDocument || iframe.contentWindow.document;
+		                if (frameDoc && frameDoc.documentElement.getAttribute('lang') !== 'ko') {
+		                    frameDoc.documentElement.setAttribute('lang', 'ko');
+		                }
+		            } catch(e) {}
+		        });
+		    }, 1000);
 		</script>
 	</body>
 
