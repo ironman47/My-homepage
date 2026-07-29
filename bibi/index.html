@@ -1,28 +1,271 @@
 <!DOCTYPE html>
-<html lang="ko"> <!-- Outer trigger for Safari -->
+<html lang="ko">
 <head>
-    <title>Korean EPUB Reader</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multilanguage EPUB Reader</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>
+
     <style>
-        html, body, iframe { margin: 0; padding: 0; width: 100%; height: 100%; border: none; overflow: hidden; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", "맑은 고딕", sans-serif; 
+            margin: 0; 
+            padding: 0;
+            background-color: #f5f5f7;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        header {
+            background: white;
+            padding: 15px 20px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            transition: all 0.3s ease;
+            flex-wrap: wrap;
+        }
+        select {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            font-size: 0.9rem;
+            cursor: pointer;
+            background: #fff;
+        }
+        .main-layout {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        #sidebar {
+            width: 260px;
+            background: #ffffff;
+            border-right: 1px solid #e0e0e0;
+            overflow-y: auto;
+            padding: 15px;
+            transition: all 0.3s ease;
+        }
+        #sidebar h3 { margin-top: 0; font-size: 1rem; color: #555; }
+        #toc-list { list-style: none; padding: 0; margin: 0; }
+        #toc-list li { 
+            padding: 8px 10px; 
+            cursor: pointer; 
+            border-radius: 4px; 
+            font-size: 0.95rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 5px; 
+        }
+        #toc-list li:hover { background: #f0f0f5; color: #007aff; }
+
+        #viewer-container {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            background: #fafafa;
+            overflow: hidden; 
+        }
+        #viewer { 
+            flex: 1;
+            border: 1px solid #e0e0e0; 
+            background: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            overflow: hidden; 
+            position: relative;
+        }
+        .nav-buttons { margin-top: 15px; display: flex; gap: 10px; justify-content: center; transition: all 0.3s ease; }
+        button {
+            padding: 10px 20px;
+            background: #007aff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        button:hover { background: #0056b3; }
+
+        .hidden { display: none !important; }
+
+        #focus-toggle {
+            position: fixed;
+            bottom: 25px;
+            right: 25px;
+            background: #333;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            padding: 10px 20px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            z-index: 1000;
+            font-size: 0.9rem;
+            opacity: 0.6;
+            transition: opacity 0.3s;
+        }
+        #focus-toggle:hover { opacity: 1; }
     </style>
 </head>
 <body>
 
-    <!-- Point this src to wherever your bibi index.html is located -->
-    <iframe id="bibi-frame" src="bibi/index.html"></iframe>
+    <header id="main-header">
+        <input type="file" id="file-picker" accept=".epub" />
 
-    <script>
-        // Forces Safari's localization engine down into the frame context
-        const iframe = document.getElementById('bibi-frame');
-        iframe.onload = function() {
-            try {
-                const innerDoc = iframe.contentDocument || iframe.contentWindow.document;
-                innerDoc.documentElement.setAttribute('lang', 'ko');
-                innerDoc.body.setAttribute('lang', 'ko');
-            } catch(e) {
-                console.log("Cross-origin restriction or frame loading block.");
-            }
+        <select id="lang-selector" title="Page Translation Language">
+            <option value="ko" selected>Korean (KR)</option>
+            <option value="ja">Japanese (JP)</option>
+            <option value="en">English (EN)</option>
+            <option value="zh-CN">Chinese (Simplified)</option>
+            <option value="zh-TW">Chinese (Traditional)</option>
+        </select>
+
+        <span id="book-title" style="font-weight: bold; color: #333; margin-left: 10px;">Please select a local book file...</span>
+    </header>
+
+    <div class="main-layout">
+        <div id="sidebar">
+            <h3>Table of Contents</h3>
+            <ul id="toc-list">
+                <li style="color:#aaa; cursor:default;">Upload an EPUB file to view content links.</li>
+            </ul>
+        </div>
+
+        <div id="viewer-container">
+            <div id="viewer"></div>
+            <div class="nav-buttons" id="bottom-nav">
+                <button id="prev-btn">◀ Previous</button>
+                <button id="next-btn">Next ▶</button>
+            </div>
+        </div>
+    </div>
+
+    <button id="focus-toggle">Toggle Reading Mode</button>
+
+<script>
+    let book = null;
+    let rendition = null;
+    let currentLang = 'ko';
+
+    // Handle Language Selection Change
+    document.getElementById('lang-selector').addEventListener('change', function(e) {
+        currentLang = e.target.value;
+        document.documentElement.setAttribute('lang', currentLang);
+
+        // Dynamically update the currently active rendered page without reloading
+        if (rendition) {
+            rendition.getContents().forEach(content => {
+                const docEl = content.document.documentElement;
+                docEl.setAttribute('lang', currentLang);
+                docEl.style.setProperty('-webkit-locale', `"${currentLang}"`, 'important');
+            });
+        }
+    });
+
+    document.getElementById('file-picker').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        document.getElementById('book-title').textContent = "Processing book layout contents...";
+        const tocList = document.getElementById('toc-list');
+        tocList.innerHTML = '<li>Loading navigation tree...</li>';
+
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const arrayBuffer = event.target.result;
+
+            if (rendition) rendition.destroy();
+
+            book = ePub();
+            book.open(arrayBuffer);
+
+            book.loaded.metadata.then(meta => {
+                document.getElementById('book-title').textContent = meta.title || file.name;
+            });
+
+            book.loaded.navigation.then(nav => {
+                tocList.innerHTML = ''; 
+                if(nav.toc.length === 0) {
+                    tocList.innerHTML = '<li style="color:#aaa;">No structural chapters found.</li>';
+                }
+
+                nav.toc.forEach(chapter => {
+                    const li = document.createElement('li');
+                    li.textContent = chapter.label.trim();
+                    li.onclick = function() {
+                        if (rendition) rendition.display(chapter.href);
+                    };
+                    tocList.appendChild(li);
+                });
+            });
+
+            rendition = book.renderTo("viewer", {
+                width: "100%",
+                height: "100%",
+                spread: "none",
+                flow: "paginated",
+                manager: "continuous"
+            });
+
+            rendition.display();
+
+            rendition.hooks.content.register(function(contents) {
+                const docEl = contents.document.documentElement;
+
+                // Inject the dynamic language variable 
+                docEl.setAttribute('lang', currentLang);
+                docEl.style.setProperty('-webkit-locale', `"${currentLang}"`, 'important');
+                contents.document.body.style.overflow = 'hidden';
+
+                // --- 3x3 Grid Navigation Gesture Logic ---
+                contents.document.addEventListener('click', function(e) {
+                    const selection = contents.window.getSelection();
+                    if (selection && selection.toString().length > 0) return;
+
+                    const width = contents.window.innerWidth;
+                    const height = contents.window.innerHeight;
+
+                    const x = e.clientX;
+                    const y = e.clientY;
+
+                    const col = Math.floor((x / width) * 3);
+                    const row = Math.floor((y / height) * 3);
+
+                    if (row === 0 && (col === 0 || col === 1)) {
+                        rendition.prev();
+                    } 
+                    else if (row === 1 && col === 1) {
+                        document.getElementById('focus-toggle').click();
+                    } 
+                    else {
+                        rendition.next();
+                    }
+                });
+            });
+
+            document.getElementById('next-btn').onclick = function() { rendition.next(); };
+            document.getElementById('prev-btn').onclick = function() { rendition.prev(); };
         };
-    </script>
+
+        reader.readAsArrayBuffer(file);
+    });
+
+    document.getElementById('focus-toggle').addEventListener('click', function() {
+        document.getElementById('main-header').classList.toggle('hidden');
+        document.getElementById('sidebar').classList.toggle('hidden');
+        document.getElementById('bottom-nav').classList.toggle('hidden');
+
+        setTimeout(() => {
+            if (rendition) rendition.resize();
+        }, 100);
+    });
+</script>
+
 </body>
 </html>
