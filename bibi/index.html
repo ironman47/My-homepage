@@ -91,6 +91,7 @@
             font-weight: 500;
         }
         button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
 
         .hidden { display: none !important; }
 
@@ -111,6 +112,30 @@
             transition: opacity 0.3s;
         }
         #focus-toggle:hover { opacity: 1; }
+
+        /* Loading Overlay */
+        #loading-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 500;
+            font-weight: bold;
+            color: #555;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -138,10 +163,16 @@
         </div>
 
         <div id="viewer-container">
-            <div id="viewer"></div>
+            <div id="viewer">
+                <!-- Overlay shown by default until a book is rendered -->
+                <div id="loading-overlay" class="hidden">
+                    <div class="spinner"></div>
+                    <span id="loading-text">Loading Book...</span>
+                </div>
+            </div>
             <div class="nav-buttons" id="bottom-nav">
-                <button id="prev-btn">◀ Previous</button>
-                <button id="next-btn">Next ▶</button>
+                <button id="prev-btn" disabled>◀ Previous</button>
+                <button id="next-btn" disabled>Next ▶</button>
             </div>
         </div>
     </div>
@@ -152,6 +183,8 @@
     let book = null;
     let rendition = null;
     let currentLang = 'ko';
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingText = document.getElementById('loading-text');
 
     document.getElementById('lang-selector').addEventListener('change', function(e) {
         currentLang = e.target.value;
@@ -170,95 +203,121 @@
         const file = e.target.files[0];
         if (!file) return;
 
-        document.getElementById('book-title').textContent = "Processing book layout contents...";
+        // Show loading state
+        document.getElementById('book-title').textContent = "Processing " + file.name + "...";
+        loadingOverlay.classList.remove('hidden');
+        loadingText.textContent = "Unzipping EPUB file...";
+
+        document.getElementById('prev-btn').disabled = true;
+        document.getElementById('next-btn').disabled = true;
+
         const tocList = document.getElementById('toc-list');
         tocList.innerHTML = '<li>Loading navigation tree...</li>';
 
+        // Safari optimization: Instead of loading as ArrayBuffer first which blocks the main thread heavily,
+        // we use a FileReader to read as Base64/DataURL, which epub.js handles much more gracefully in Safari
         const reader = new FileReader();
+
         reader.onload = function(event) {
-            const arrayBuffer = event.target.result;
+            const dataUrl = event.target.result;
+            loadingText.textContent = "Parsing book structure...";
 
-            if (rendition) rendition.destroy();
+            // Adding a tiny timeout to allow the browser to redraw the loading UI
+            setTimeout(() => {
+                if (rendition) rendition.destroy();
 
-            // Fix for Safari local execution - use the ArrayBuffer directly without ePub() resolving URLs
-            book = ePub(arrayBuffer); 
+                // Initialize epub.js with the base64 string
+                book = ePub(dataUrl, { encoding: "base64" }); 
 
-            book.loaded.metadata.then(meta => {
-                document.getElementById('book-title').textContent = meta.title || file.name;
-            });
-
-            book.loaded.navigation.then(nav => {
-                tocList.innerHTML = ''; 
-                if(nav.toc.length === 0) {
-                    tocList.innerHTML = '<li style="color:#aaa;">No structural chapters found.</li>';
-                }
-
-                nav.toc.forEach(chapter => {
-                    const li = document.createElement('li');
-                    li.textContent = chapter.label.trim();
-                    li.onclick = function() {
-                        if (rendition) rendition.display(chapter.href);
-                    };
-                    tocList.appendChild(li);
+                book.loaded.metadata.then(meta => {
+                    document.getElementById('book-title').textContent = meta.title || file.name;
                 });
-            });
 
-            rendition = book.renderTo("viewer", {
-                width: "100%",
-                height: "100%",
-                spread: "none",
-                flow: "paginated",
-                manager: "continuous"
-            });
-
-            rendition.display();
-
-            rendition.hooks.content.register(function(contents) {
-                const docEl = contents.document.documentElement;
-
-                docEl.setAttribute('lang', currentLang);
-                docEl.style.setProperty('-webkit-locale', `"${currentLang}"`, 'important');
-                contents.document.body.style.overflow = 'hidden';
-
-                // --- Fix for Safari iframe redraw issue ---
-                const iframe = contents.document.defaultView.frameElement;
-                if (iframe) {
-                    iframe.style.transform = "translateZ(0)";
-                    iframe.offsetWidth; // Trigger reflow
-                    iframe.style.transform = null;
-                }
-
-                contents.document.addEventListener('click', function(e) {
-                    const selection = contents.window.getSelection();
-                    if (selection && selection.toString().length > 0) return;
-
-                    const width = contents.window.innerWidth;
-                    const height = contents.window.innerHeight;
-
-                    const x = e.clientX;
-                    const y = e.clientY;
-
-                    const col = Math.floor((x / width) * 3);
-                    const row = Math.floor((y / height) * 3);
-
-                    if (row === 0 && (col === 0 || col === 1)) {
-                        rendition.prev();
-                    } 
-                    else if (row === 1 && col === 1) {
-                        document.getElementById('focus-toggle').click();
-                    } 
-                    else {
-                        rendition.next();
+                book.loaded.navigation.then(nav => {
+                    tocList.innerHTML = ''; 
+                    if(nav.toc.length === 0) {
+                        tocList.innerHTML = '<li style="color:#aaa;">No structural chapters found.</li>';
                     }
-                });
-            });
 
-            document.getElementById('next-btn').onclick = function() { rendition.next(); };
-            document.getElementById('prev-btn').onclick = function() { rendition.prev(); };
+                    nav.toc.forEach(chapter => {
+                        const li = document.createElement('li');
+                        li.textContent = chapter.label.trim();
+                        li.onclick = function() {
+                            if (rendition) rendition.display(chapter.href);
+                        };
+                        tocList.appendChild(li);
+                    });
+                });
+
+                loadingText.textContent = "Rendering pages...";
+
+                // Optimize rendering settings for Safari
+                rendition = book.renderTo("viewer", {
+                    width: "100%",
+                    height: "100%",
+                    spread: "none",
+                    flow: "paginated",
+                    manager: "continuous",
+                    minSpreadWidth: 800, // Forces single page layout clearly
+                    allowScriptedContent: false // Safari security constraint optimization
+                });
+
+                rendition.display().then(() => {
+                    loadingOverlay.classList.add('hidden');
+                    document.getElementById('prev-btn').disabled = false;
+                    document.getElementById('next-btn').disabled = false;
+                }).catch(err => {
+                    loadingText.textContent = "Error loading book: " + err;
+                });
+
+                rendition.hooks.content.register(function(contents) {
+                    const docEl = contents.document.documentElement;
+
+                    docEl.setAttribute('lang', currentLang);
+                    docEl.style.setProperty('-webkit-locale', `"${currentLang}"`, 'important');
+                    contents.document.body.style.overflow = 'hidden';
+
+                    const iframe = contents.document.defaultView.frameElement;
+                    if (iframe) {
+                        iframe.style.transform = "translateZ(0)";
+                        iframe.offsetWidth; 
+                        iframe.style.transform = null;
+                    }
+
+                    contents.document.addEventListener('click', function(e) {
+                        const selection = contents.window.getSelection();
+                        if (selection && selection.toString().length > 0) return;
+
+                        const width = contents.window.innerWidth;
+                        const height = contents.window.innerHeight;
+
+                        const x = e.clientX;
+                        const y = e.clientY;
+
+                        const col = Math.floor((x / width) * 3);
+                        const row = Math.floor((y / height) * 3);
+
+                        if (row === 0 && (col === 0 || col === 1)) {
+                            rendition.prev();
+                        } 
+                        else if (row === 1 && col === 1) {
+                            document.getElementById('focus-toggle').click();
+                        } 
+                        else {
+                            rendition.next();
+                        }
+                    });
+                });
+            }, 50); // 50ms delay to unblock the UI thread
         };
 
-        reader.readAsArrayBuffer(file);
+        // Read as DataURL (Base64) instead of ArrayBuffer. This uses slightly more memory but avoids 
+        // Safari's notorious file:// array buffer cross-origin block issues during JSZip unzipping.
+        reader.readAsDataURL(file);
     });
+
+    document.getElementById('next-btn').onclick = function() { if(rendition) rendition.next(); };
+    document.getElementById('prev-btn').onclick = function() { if(rendition) rendition.prev(); };
 
     document.getElementById('focus-toggle').addEventListener('click', function() {
         document.getElementById('main-header').classList.toggle('hidden');
