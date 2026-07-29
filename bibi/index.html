@@ -3,136 +3,116 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multilanguage EPUB Reader</title>
+    <title>Native Safari EPUB Reader</title>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>
+    <!-- We ONLY need JSZip. Completely dropping epub.js to bypass Safari restrictions. -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
     <style>
+        :root {
+            --bg-color: #f5f5f7;
+            --panel-bg: #ffffff;
+            --text-color: #333;
+            --border-color: #e0e0e0;
+            --hover-bg: #f0f0f5;
+            --btn-bg: #007aff;
+            --btn-hover: #0056b3;
+        }
+
+        body.dark-mode {
+            --bg-color: #121212;
+            --panel-bg: #1e1e1e;
+            --text-color: #e0e0e0;
+            --border-color: #333333;
+            --hover-bg: #2a2a2a;
+            --btn-bg: #0a84ff;
+            --btn-hover: #0066cc;
+        }
+
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", "맑은 고딕", sans-serif; 
-            margin: 0; 
-            padding: 0;
-            background-color: #f5f5f7;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
+            margin: 0; padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex; flex-direction: column; height: 100vh;
+            transition: background-color 0.3s, color 0.3s;
         }
         header {
-            background: white;
+            background: var(--panel-bg);
             padding: 15px 20px;
-            border-bottom: 1px solid #e0e0e0;
-            display: flex;
-            gap: 15px;
-            align-items: center;
-            transition: all 0.3s ease;
-            flex-wrap: wrap;
+            border-bottom: 1px solid var(--border-color);
+            display: flex; gap: 15px; align-items: center;
+            transition: all 0.3s ease; flex-wrap: wrap;
+        }
+        select, input[type="file"] {
+            color: var(--text-color);
         }
         select {
-            padding: 8px 12px;
-            border-radius: 6px;
-            border: 1px solid #ccc;
-            font-size: 0.9rem;
-            cursor: pointer;
-            background: #fff;
+            padding: 8px 12px; border-radius: 6px;
+            border: 1px solid var(--border-color);
+            font-size: 0.9rem; cursor: pointer;
+            background: var(--panel-bg);
         }
-        .main-layout {
-            display: flex;
-            flex: 1;
-            overflow: hidden;
-        }
+        .main-layout { display: flex; flex: 1; overflow: hidden; }
         #sidebar {
-            width: 260px;
-            background: #ffffff;
-            border-right: 1px solid #e0e0e0;
-            overflow-y: auto;
-            padding: 15px;
+            width: 260px; background: var(--panel-bg);
+            border-right: 1px solid var(--border-color);
+            overflow-y: auto; padding: 15px;
             transition: all 0.3s ease;
         }
-        #sidebar h3 { margin-top: 0; font-size: 1rem; color: #555; }
+        #sidebar h3 { margin-top: 0; font-size: 1rem; color: var(--text-color); opacity: 0.8; }
         #toc-list { list-style: none; padding: 0; margin: 0; }
         #toc-list li { 
-            padding: 8px 10px; 
-            cursor: pointer; 
-            border-radius: 4px; 
-            font-size: 0.95rem;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            margin-bottom: 5px; 
+            padding: 8px 10px; cursor: pointer; border-radius: 4px; 
+            font-size: 0.95rem; white-space: nowrap; overflow: hidden;
+            text-overflow: ellipsis; margin-bottom: 5px; 
+            color: var(--text-color);
         }
-        #toc-list li:hover { background: #f0f0f5; color: #007aff; }
+        #toc-list li:hover { background: var(--hover-bg); color: var(--btn-bg); }
+        #toc-list li.active { background: var(--hover-bg); font-weight: bold; border-left: 3px solid var(--btn-bg); }
 
         #viewer-container {
-            flex: 1;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            background: #fafafa;
-            overflow: hidden; 
+            flex: 1; padding: 20px; display: flex; flex-direction: column;
+            background: var(--bg-color); overflow: hidden; 
         }
         #viewer { 
-            flex: 1;
-            border: 1px solid #e0e0e0; 
-            background: #ffffff;
-            border-radius: 8px;
+            flex: 1; border: 1px solid var(--border-color); 
+            background: var(--panel-bg); border-radius: 8px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-            overflow: hidden; 
-            position: relative;
+            overflow: hidden; position: relative;
         }
+
         .nav-buttons { margin-top: 15px; display: flex; gap: 10px; justify-content: center; transition: all 0.3s ease; }
         button {
-            padding: 10px 20px;
-            background: #007aff;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 500;
+            padding: 10px 20px; background: var(--btn-bg); color: white;
+            border: none; border-radius: 6px; cursor: pointer; font-weight: 500;
         }
-        button:hover { background: #0056b3; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
+        button:hover { background: var(--btn-hover); }
+        button:disabled { background: var(--border-color); color: #888; cursor: not-allowed; }
+
+        #theme-toggle { background: transparent; border: 1px solid var(--border-color); color: var(--text-color); }
+        #theme-toggle:hover { background: var(--hover-bg); }
 
         .hidden { display: none !important; }
 
         #focus-toggle {
-            position: fixed;
-            bottom: 25px;
-            right: 25px;
-            background: #333;
-            color: white;
-            border: none;
-            border-radius: 50px;
-            padding: 10px 20px;
-            cursor: pointer;
+            position: fixed; bottom: 25px; right: 25px;
+            background: #333; color: white; border: none;
+            border-radius: 50px; padding: 10px 20px; cursor: pointer;
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            z-index: 1000;
-            font-size: 0.9rem;
-            opacity: 0.6;
-            transition: opacity 0.3s;
+            z-index: 1000; font-size: 0.9rem; opacity: 0.6; transition: opacity 0.3s;
         }
         #focus-toggle:hover { opacity: 1; }
 
         #loading-overlay {
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(255,255,255,0.9);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 500;
-            font-weight: bold;
-            color: #555;
-            flex-direction: column;
-            gap: 10px;
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--panel-bg); display: flex; justify-content: center;
+            align-items: center; z-index: 500; font-weight: bold; color: var(--text-color);
+            flex-direction: column; gap: 10px; opacity: 0.9;
         }
         .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
+            border: 4px solid var(--border-color); border-top: 4px solid var(--btn-bg);
+            border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
@@ -150,7 +130,9 @@
             <option value="zh-TW">Chinese (Traditional)</option>
         </select>
 
-        <span id="book-title" style="font-weight: bold; color: #333; margin-left: 10px;">Please select a local book file...</span>
+        <button id="theme-toggle">🌙 Dark Mode</button>
+
+        <span id="book-title" style="font-weight: bold; margin-left: 10px;">Please select a local book file...</span>
     </header>
 
     <div class="main-layout">
@@ -178,150 +160,335 @@
     <button id="focus-toggle">Toggle Reading Mode</button>
 
 <script>
-    let book = null;
-    let rendition = null;
+    // --- Custom Native EPUB Engine (Bypasses Safari epub.js iframe bugs) ---
+    let epubZip = null;
+    let epubManifest = {};
+    let epubSpine = [];
+    let epubBasePath = "";
+    let epubToc = [];
+
+    let currentChapterIndex = 0;
     let currentLang = 'ko';
+    let isDarkMode = false;
+
     const loadingOverlay = document.getElementById('loading-overlay');
     const loadingText = document.getElementById('loading-text');
 
-    document.getElementById('lang-selector').addEventListener('change', function(e) {
+    // Language & Theme Handlers
+    document.getElementById('lang-selector').addEventListener('change', e => {
         currentLang = e.target.value;
         document.documentElement.setAttribute('lang', currentLang);
-
-        if (rendition) {
-            rendition.getContents().forEach(content => {
-                const docEl = content.document.documentElement;
-                docEl.setAttribute('lang', currentLang);
-                docEl.style.setProperty('-webkit-locale', `"${currentLang}"`, 'important');
-            });
-        }
+        if(epubZip) renderChapter(); // Re-render to inject new language
     });
 
-    document.getElementById('file-picker').addEventListener('change', function(e) {
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+        isDarkMode = !isDarkMode;
+        document.body.classList.toggle('dark-mode', isDarkMode);
+        document.getElementById('theme-toggle').textContent = isDarkMode ? '☀️ Light Mode' : '🌙 Dark Mode';
+        if(epubZip) renderChapter(); // Re-render to apply theme to iframe
+    });
+
+    function resolvePath(base, relative) {
+        if (!base) return relative;
+        const stack = base.split('/').filter(p => p);
+        const parts = relative.split('/');
+        for(let p of parts) {
+            if (p === '..') stack.pop();
+            else if (p !== '.' && p !== '') stack.push(p);
+        }
+        return stack.join('/');
+    }
+
+    document.getElementById('file-picker').addEventListener('change', async function(e) {
         const file = e.target.files[0];
         if (!file) return;
 
-        document.getElementById('book-title').textContent = "Processing " + file.name + "...";
+        document.getElementById('book-title').textContent = file.name;
         loadingOverlay.classList.remove('hidden');
-        loadingText.textContent = "Unzipping EPUB file...";
+        loadingText.textContent = "Unzipping locally...";
 
-        document.getElementById('prev-btn').disabled = true;
-        document.getElementById('next-btn').disabled = true;
+        try {
+            // 1. Read ZIP in memory
+            const arrayBuffer = await file.arrayBuffer();
+            epubZip = await JSZip.loadAsync(arrayBuffer);
 
-        const tocList = document.getElementById('toc-list');
-        tocList.innerHTML = '<li>Loading navigation tree...</li>';
-
-        const reader = new FileReader();
-
-        reader.onload = function(event) {
-            // Using ArrayBuffer again, but with a highly optimized rendering method
-            const arrayBuffer = event.target.result;
             loadingText.textContent = "Parsing book structure...";
+            const parser = new DOMParser();
 
-            setTimeout(() => {
-                if (rendition) rendition.destroy();
+            // 2. Find OPF file path
+            const containerXml = await epubZip.file("META-INF/container.xml").async("text");
+            const containerDoc = parser.parseFromString(containerXml, "text/xml");
+            const opfPath = containerDoc.querySelector("rootfile").getAttribute("full-path");
+            epubBasePath = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : "";
 
-                book = ePub(arrayBuffer); 
+            // 3. Parse OPF file
+            const opfXml = await epubZip.file(opfPath).async("text");
+            const opfDoc = parser.parseFromString(opfXml, "text/xml");
 
-                book.loaded.metadata.then(meta => {
-                    document.getElementById('book-title').textContent = meta.title || file.name;
-                });
+            // Title
+            const titleNode = opfDoc.getElementsByTagName("dc:title")[0];
+            if (titleNode) document.getElementById('book-title').textContent = titleNode.textContent;
 
-                book.loaded.navigation.then(nav => {
-                    tocList.innerHTML = ''; 
-                    if(nav.toc.length === 0) {
-                        tocList.innerHTML = '<li style="color:#aaa;">No structural chapters found.</li>';
-                    }
+            // Manifest & NCX
+            epubManifest = {};
+            let ncxHref = null;
+            const items = opfDoc.getElementsByTagName("item");
+            for (let i=0; i<items.length; i++) {
+                const id = items[i].getAttribute("id");
+                const href = items[i].getAttribute("href");
+                const mediaType = items[i].getAttribute("media-type");
+                epubManifest[id] = href;
+                if (mediaType === "application/x-dtbncx+xml") ncxHref = href;
+            }
 
-                    nav.toc.forEach(chapter => {
-                        const li = document.createElement('li');
-                        li.textContent = chapter.label.trim();
-                        li.onclick = function() {
-                            if (rendition) rendition.display(chapter.href);
-                        };
-                        tocList.appendChild(li);
-                    });
-                });
+            // Spine
+            epubSpine = [];
+            const itemrefs = opfDoc.getElementsByTagName("itemref");
+            for (let i=0; i<itemrefs.length; i++) {
+                const idref = itemrefs[i].getAttribute("idref");
+                if (epubManifest[idref]) epubSpine.push(epubManifest[idref]);
+            }
 
-                loadingText.textContent = "Rendering pages...";
-
-                // PERFORMANCE OPTIMIZATION: 
-                // Changed manager from "continuous" to "default"
-                rendition = book.renderTo("viewer", {
-                    width: "100%",
-                    height: "100%",
-                    spread: "none",
-                    flow: "paginated",
-                    manager: "default", // <--- THE FIX FOR SAFARI PERFORMANCE
-                    allowScriptedContent: false 
-                });
-
-                rendition.display().then(() => {
-                    loadingOverlay.classList.add('hidden');
-                    document.getElementById('prev-btn').disabled = false;
-                    document.getElementById('next-btn').disabled = false;
-                }).catch(err => {
-                    loadingText.textContent = "Error loading book: " + err;
-                });
-
-                rendition.hooks.content.register(function(contents) {
-                    const docEl = contents.document.documentElement;
-
-                    docEl.setAttribute('lang', currentLang);
-                    docEl.style.setProperty('-webkit-locale', `"${currentLang}"`, 'important');
-                    contents.document.body.style.overflow = 'hidden';
-
-                    // --- Fix for Safari iframe redraw issue ---
-                    const iframe = contents.document.defaultView.frameElement;
-                    if (iframe) {
-                        iframe.style.transform = "translateZ(0)";
-                        iframe.offsetWidth; 
-                        iframe.style.transform = null;
-                    }
-
-                    contents.document.addEventListener('click', function(e) {
-                        const selection = contents.window.getSelection();
-                        if (selection && selection.toString().length > 0) return;
-
-                        const width = contents.window.innerWidth;
-                        const height = contents.window.innerHeight;
-
-                        const x = e.clientX;
-                        const y = e.clientY;
-
-                        const col = Math.floor((x / width) * 3);
-                        const row = Math.floor((y / height) * 3);
-
-                        if (row === 0 && (col === 0 || col === 1)) {
-                            rendition.prev();
-                        } 
-                        else if (row === 1 && col === 1) {
-                            document.getElementById('focus-toggle').click();
-                        } 
-                        else {
-                            rendition.next();
+            // TOC
+            epubToc = [];
+            if (ncxHref) {
+                try {
+                    const ncxPath = resolvePath(epubBasePath, ncxHref);
+                    const ncxFile = epubZip.file(ncxPath);
+                    if (ncxFile) {
+                        const ncxStr = await ncxFile.async("text");
+                        const ncxDoc = parser.parseFromString(ncxStr, "text/xml");
+                        const navPoints = ncxDoc.getElementsByTagName("navPoint");
+                        for (let i=0; i<navPoints.length; i++) {
+                            const label = navPoints[i].getElementsByTagName("text")[0].textContent;
+                            const src = navPoints[i].getElementsByTagName("content")[0].getAttribute("src");
+                            epubToc.push({ label, href: src });
                         }
-                    });
-                });
-            }, 50); 
-        };
+                    }
+                } catch(err) { console.warn("NCX parse error", err); }
+            }
 
-        // Reverting to ArrayBuffer as it's faster for actual memory usage when manager is fixed
-        reader.readAsArrayBuffer(file);
+            // Fallback TOC
+            if (epubToc.length === 0) {
+                epubSpine.forEach((href, i) => epubToc.push({ label: "Chapter " + (i+1), href }));
+            }
+
+            buildTocUI();
+
+            currentChapterIndex = 0;
+            renderChapter();
+
+        } catch (error) {
+            loadingText.textContent = "Error: " + error.message;
+            console.error(error);
+        }
     });
 
-    document.getElementById('next-btn').onclick = function() { if(rendition) rendition.next(); };
-    document.getElementById('prev-btn').onclick = function() { if(rendition) rendition.prev(); };
+    function buildTocUI() {
+        const tocEl = document.getElementById('toc-list');
+        tocEl.innerHTML = '';
+        epubToc.forEach(item => {
+            const li = document.createElement('li');
+            li.textContent = item.label.trim();
+            li.onclick = () => {
+                const targetHref = item.href.split('#')[0];
+                const idx = epubSpine.findIndex(s => s === targetHref || targetHref.endsWith(s));
+                if (idx !== -1) {
+                    currentChapterIndex = idx;
+                    renderChapter();
+                }
+            };
+            tocEl.appendChild(li);
+        });
+    }
 
-    document.getElementById('focus-toggle').addEventListener('click', function() {
+    async function processChapterHtml(html, chapHref) {
+        const chapDir = chapHref.includes('/') ? chapHref.substring(0, chapHref.lastIndexOf('/') + 1) : "";
+
+        // Extract Body safely
+        const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        let bodyContent = bodyMatch ? bodyMatch[1] : html;
+
+        // Extract Styles
+        const styles = [];
+        const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi;
+        let sMatch;
+        while ((sMatch = styleRegex.exec(html))) styles.push(sMatch[1]);
+
+        // Replace Link CSS with inline styles
+        const linkRegex = /<link[^>]+href=["']([^"']+)["']/gi;
+        let lMatch;
+        while ((lMatch = linkRegex.exec(html))) {
+            const href = lMatch[1];
+            if(href.includes("://") || href.startsWith("data:")) continue;
+            const file = epubZip.file(resolvePath(chapDir, href));
+            if (file) styles.push(await file.async("text"));
+        }
+
+        // Convert Images to Base64 (Bypasses Safari Blob restrictions completely)
+        const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
+        let iMatch;
+        const imgSources = new Set();
+        while ((iMatch = imgRegex.exec(bodyContent))) imgSources.add(iMatch[1]);
+
+        for (let src of imgSources) {
+            if(src.includes("://") || src.startsWith("data:")) continue;
+            const fullPath = resolvePath(chapDir, src);
+            const file = epubZip.file(fullPath);
+            if (file) {
+                const b64 = await file.async("base64");
+                let ext = fullPath.split('.').pop().toLowerCase();
+                let mime = "image/png";
+                if(ext === "jpg" || ext === "jpeg") mime = "image/jpeg";
+                else if(ext === "svg") mime = "image/svg+xml";
+                else if(ext === "gif") mime = "image/gif";
+
+                bodyContent = bodyContent.split(src).join(`data:${mime};base64,${b64}`);
+            }
+        }
+
+        return { body: bodyContent, css: styles.join('\n') };
+    }
+
+    async function renderChapter() {
+        if (!epubZip || epubSpine.length === 0) return;
+        loadingOverlay.classList.remove('hidden');
+        loadingText.textContent = "Rendering Chapter...";
+
+        const chapHref = epubSpine[currentChapterIndex];
+        const fullPath = resolvePath(epubBasePath, chapHref);
+        const file = epubZip.file(fullPath);
+
+        if (!file) {
+            loadingText.textContent = "Chapter not found in archive.";
+            return;
+        }
+
+        const rawHtml = await file.async("text");
+        const processed = await processChapterHtml(rawHtml, fullPath);
+
+        // Update TOC Active State
+        const lis = document.getElementById('toc-list').getElementsByTagName('li');
+        Array.from(lis).forEach(li => li.classList.remove('active'));
+        const activeIdx = epubToc.findIndex(t => t.href.split('#')[0] === chapHref);
+        if(activeIdx !== -1 && lis[activeIdx]) lis[activeIdx].classList.add('active');
+
+        // Update Buttons
+        document.getElementById('prev-btn').disabled = (currentChapterIndex === 0);
+        document.getElementById('next-btn').disabled = (currentChapterIndex === epubSpine.length - 1);
+
+        // Build Safari-Safe Iframe Document
+        const fontColor = isDarkMode ? '#e0e0e0' : '#333333';
+        const iframeDoc = `
+        <!DOCTYPE html>
+        <html lang="${currentLang}">
+        <head>
+            <meta charset="utf-8">
+            <style>
+                body {
+                    margin: 0; padding: 20px; box-sizing: border-box;
+                    width: 100vw; height: 100vh; overflow: hidden;
+                    font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", sans-serif;
+                    line-height: 1.6; color: ${fontColor}; background: transparent;
+                }
+                #content {
+                    column-width: calc(100vw - 40px);
+                    column-gap: 40px;
+                    height: calc(100vh - 40px);
+                    margin: 0; padding: 0;
+                    transition: transform 0.25s ease;
+                    word-wrap: break-word;
+                }
+                img { max-width: 100%; height: auto; max-height: 100vh; object-fit: contain; }
+                a { color: ${isDarkMode ? '#5dade2' : '#0056b3'}; }
+                ${processed.css}
+            </style>
+        </head>
+        <body style="-webkit-locale: '${currentLang}';">
+            <div id="content">${processed.body}</div>
+            <script>
+                let currentPage = 0;
+                let maxPages = 1;
+
+                function calcPages() {
+                    const content = document.getElementById('content');
+                    maxPages = Math.max(1, Math.round(content.scrollWidth / window.innerWidth));
+                    if(currentPage >= maxPages) currentPage = maxPages - 1;
+                    updateTransform();
+                }
+
+                function updateTransform() {
+                    const content = document.getElementById('content');
+                    content.style.transform = 'translateX(-' + (currentPage * window.innerWidth) + 'px)';
+                }
+
+                window.addEventListener('resize', calcPages);
+                setTimeout(calcPages, 50);
+                setTimeout(calcPages, 300); // Failsafe for late image loading
+
+                // --- 3x3 Gesture Logic ---
+                document.addEventListener('click', function(e) {
+                    const sel = window.getSelection();
+                    if (sel && sel.toString().length > 0) return;
+
+                    const w = window.innerWidth;
+                    const h = window.innerHeight;
+                    const col = Math.floor((e.clientX / w) * 3);
+                    const row = Math.floor((e.clientY / h) * 3);
+
+                    if (row === 0 && (col === 0 || col === 1)) {
+                        if (currentPage > 0) { currentPage--; updateTransform(); }
+                        else { window.parent.postMessage('PREV_CHAPTER', '*'); }
+                    } else if (row === 1 && col === 1) {
+                        window.parent.postMessage('TOGGLE_MENU', '*');
+                    } else {
+                        if (currentPage < maxPages - 1) { currentPage++; updateTransform(); }
+                        else { window.parent.postMessage('NEXT_CHAPTER', '*'); }
+                    }
+                });
+            </script>
+        </body>
+        </html>
+        `;
+
+        // Inject Iframe
+        const container = document.getElementById('viewer');
+        container.innerHTML = '';
+        const iframe = document.createElement('iframe');
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        iframe.style.border = 'none';
+        iframe.style.background = 'transparent';
+
+        // Native srcdoc injection bypasses ALL Safari file:// iframe restrictions
+        iframe.srcdoc = iframeDoc; 
+
+        iframe.onload = () => { loadingOverlay.classList.add('hidden'); };
+        container.appendChild(iframe);
+    }
+
+    // Handle Messages from Iframe
+    window.addEventListener('message', function(e) {
+        if (e.data === 'PREV_CHAPTER') document.getElementById('prev-btn').click();
+        else if (e.data === 'NEXT_CHAPTER') document.getElementById('next-btn').click();
+        else if (e.data === 'TOGGLE_MENU') document.getElementById('focus-toggle').click();
+    });
+
+    // Outer UI Buttons
+    document.getElementById('prev-btn').onclick = () => {
+        if (currentChapterIndex > 0) { currentChapterIndex--; renderChapter(); }
+    };
+    document.getElementById('next-btn').onclick = () => {
+        if (currentChapterIndex < epubSpine.length - 1) { currentChapterIndex++; renderChapter(); }
+    };
+
+    // Focus Mode Toggle
+    document.getElementById('focus-toggle').addEventListener('click', () => {
         document.getElementById('main-header').classList.toggle('hidden');
         document.getElementById('sidebar').classList.toggle('hidden');
         document.getElementById('bottom-nav').classList.toggle('hidden');
-
-        setTimeout(() => {
-            if (rendition) rendition.resize();
-        }, 100);
     });
+
 </script>
 
 </body>
