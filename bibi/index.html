@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Native Safari EPUB Reader</title>
 
-    <!-- We ONLY need JSZip. Completely dropping epub.js to bypass Safari restrictions. -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
     <style>
@@ -160,7 +159,6 @@
     <button id="focus-toggle">Toggle Reading Mode</button>
 
 <script>
-    // --- Custom Native EPUB Engine (Bypasses Safari epub.js iframe bugs) ---
     let epubZip = null;
     let epubManifest = {};
     let epubSpine = [];
@@ -174,18 +172,17 @@
     const loadingOverlay = document.getElementById('loading-overlay');
     const loadingText = document.getElementById('loading-text');
 
-    // Language & Theme Handlers
     document.getElementById('lang-selector').addEventListener('change', e => {
         currentLang = e.target.value;
         document.documentElement.setAttribute('lang', currentLang);
-        if(epubZip) renderChapter(); // Re-render to inject new language
+        if(epubZip) renderChapter(); 
     });
 
     document.getElementById('theme-toggle').addEventListener('click', () => {
         isDarkMode = !isDarkMode;
         document.body.classList.toggle('dark-mode', isDarkMode);
         document.getElementById('theme-toggle').textContent = isDarkMode ? '☀️ Light Mode' : '🌙 Dark Mode';
-        if(epubZip) renderChapter(); // Re-render to apply theme to iframe
+        if(epubZip) renderChapter(); 
     });
 
     function resolvePath(base, relative) {
@@ -208,28 +205,23 @@
         loadingText.textContent = "Unzipping locally...";
 
         try {
-            // 1. Read ZIP in memory
             const arrayBuffer = await file.arrayBuffer();
             epubZip = await JSZip.loadAsync(arrayBuffer);
 
             loadingText.textContent = "Parsing book structure...";
             const parser = new DOMParser();
 
-            // 2. Find OPF file path
             const containerXml = await epubZip.file("META-INF/container.xml").async("text");
             const containerDoc = parser.parseFromString(containerXml, "text/xml");
             const opfPath = containerDoc.querySelector("rootfile").getAttribute("full-path");
             epubBasePath = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : "";
 
-            // 3. Parse OPF file
             const opfXml = await epubZip.file(opfPath).async("text");
             const opfDoc = parser.parseFromString(opfXml, "text/xml");
 
-            // Title
             const titleNode = opfDoc.getElementsByTagName("dc:title")[0];
             if (titleNode) document.getElementById('book-title').textContent = titleNode.textContent;
 
-            // Manifest & NCX
             epubManifest = {};
             let ncxHref = null;
             const items = opfDoc.getElementsByTagName("item");
@@ -241,7 +233,6 @@
                 if (mediaType === "application/x-dtbncx+xml") ncxHref = href;
             }
 
-            // Spine
             epubSpine = [];
             const itemrefs = opfDoc.getElementsByTagName("itemref");
             for (let i=0; i<itemrefs.length; i++) {
@@ -249,7 +240,6 @@
                 if (epubManifest[idref]) epubSpine.push(epubManifest[idref]);
             }
 
-            // TOC
             epubToc = [];
             if (ncxHref) {
                 try {
@@ -268,13 +258,11 @@
                 } catch(err) { console.warn("NCX parse error", err); }
             }
 
-            // Fallback TOC
             if (epubToc.length === 0) {
                 epubSpine.forEach((href, i) => epubToc.push({ label: "Chapter " + (i+1), href }));
             }
 
             buildTocUI();
-
             currentChapterIndex = 0;
             renderChapter();
 
@@ -305,17 +293,14 @@
     async function processChapterHtml(html, chapHref) {
         const chapDir = chapHref.includes('/') ? chapHref.substring(0, chapHref.lastIndexOf('/') + 1) : "";
 
-        // Extract Body safely
         const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
         let bodyContent = bodyMatch ? bodyMatch[1] : html;
 
-        // Extract Styles
         const styles = [];
         const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi;
         let sMatch;
         while ((sMatch = styleRegex.exec(html))) styles.push(sMatch[1]);
 
-        // Replace Link CSS with inline styles
         const linkRegex = /<link[^>]+href=["']([^"']+)["']/gi;
         let lMatch;
         while ((lMatch = linkRegex.exec(html))) {
@@ -325,7 +310,6 @@
             if (file) styles.push(await file.async("text"));
         }
 
-        // Convert Images to Base64 (Bypasses Safari Blob restrictions completely)
         const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
         let iMatch;
         const imgSources = new Set();
@@ -367,18 +351,21 @@
         const rawHtml = await file.async("text");
         const processed = await processChapterHtml(rawHtml, fullPath);
 
-        // Update TOC Active State
         const lis = document.getElementById('toc-list').getElementsByTagName('li');
         Array.from(lis).forEach(li => li.classList.remove('active'));
         const activeIdx = epubToc.findIndex(t => t.href.split('#')[0] === chapHref);
         if(activeIdx !== -1 && lis[activeIdx]) lis[activeIdx].classList.add('active');
 
-        // Update Buttons
         document.getElementById('prev-btn').disabled = (currentChapterIndex === 0);
         document.getElementById('next-btn').disabled = (currentChapterIndex === epubSpine.length - 1);
 
-        // Build Safari-Safe Iframe Document
         const fontColor = isDarkMode ? '#e0e0e0' : '#333333';
+
+        // Escape backticks inside the CSS and body to prevent early termination of the string template literal
+        const safeCss = processed.css.replace(/`/g, '\\`');
+        const safeBody = processed.body.replace(/`/g, '\\`');
+
+        // THE FIX: We must escape the literal backticks inside the script tag otherwise JS evaluates it as syntax errors when setting srcdoc
         const iframeDoc = `
         <!DOCTYPE html>
         <html lang="${currentLang}">
@@ -401,11 +388,11 @@
                 }
                 img { max-width: 100%; height: auto; max-height: 100vh; object-fit: contain; }
                 a { color: ${isDarkMode ? '#5dade2' : '#0056b3'}; }
-                ${processed.css}
+                ${safeCss}
             </style>
         </head>
         <body style="-webkit-locale: '${currentLang}';">
-            <div id="content">${processed.body}</div>
+            <div id="content">${safeBody}</div>
             <script>
                 let currentPage = 0;
                 let maxPages = 1;
@@ -424,9 +411,8 @@
 
                 window.addEventListener('resize', calcPages);
                 setTimeout(calcPages, 50);
-                setTimeout(calcPages, 300); // Failsafe for late image loading
+                setTimeout(calcPages, 300); 
 
-                // --- 3x3 Gesture Logic ---
                 document.addEventListener('click', function(e) {
                     const sel = window.getSelection();
                     if (sel && sel.toString().length > 0) return;
@@ -446,12 +432,11 @@
                         else { window.parent.postMessage('NEXT_CHAPTER', '*'); }
                     }
                 });
-            </script>
+            <\/script>
         </body>
         </html>
         `;
 
-        // Inject Iframe
         const container = document.getElementById('viewer');
         container.innerHTML = '';
         const iframe = document.createElement('iframe');
@@ -460,21 +445,18 @@
         iframe.style.border = 'none';
         iframe.style.background = 'transparent';
 
-        // Native srcdoc injection bypasses ALL Safari file:// iframe restrictions
         iframe.srcdoc = iframeDoc; 
 
         iframe.onload = () => { loadingOverlay.classList.add('hidden'); };
         container.appendChild(iframe);
     }
 
-    // Handle Messages from Iframe
     window.addEventListener('message', function(e) {
         if (e.data === 'PREV_CHAPTER') document.getElementById('prev-btn').click();
         else if (e.data === 'NEXT_CHAPTER') document.getElementById('next-btn').click();
         else if (e.data === 'TOGGLE_MENU') document.getElementById('focus-toggle').click();
     });
 
-    // Outer UI Buttons
     document.getElementById('prev-btn').onclick = () => {
         if (currentChapterIndex > 0) { currentChapterIndex--; renderChapter(); }
     };
@@ -482,7 +464,6 @@
         if (currentChapterIndex < epubSpine.length - 1) { currentChapterIndex++; renderChapter(); }
     };
 
-    // Focus Mode Toggle
     document.getElementById('focus-toggle').addEventListener('click', () => {
         document.getElementById('main-header').classList.toggle('hidden');
         document.getElementById('sidebar').classList.toggle('hidden');
