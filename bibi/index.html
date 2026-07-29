@@ -153,12 +153,10 @@
     let rendition = null;
     let currentLang = 'ko';
 
-    // Handle Language Selection Change
     document.getElementById('lang-selector').addEventListener('change', function(e) {
         currentLang = e.target.value;
         document.documentElement.setAttribute('lang', currentLang);
 
-        // Dynamically update the currently active rendered page without reloading
         if (rendition) {
             rendition.getContents().forEach(content => {
                 const docEl = content.document.documentElement;
@@ -182,8 +180,8 @@
 
             if (rendition) rendition.destroy();
 
-            book = ePub();
-            book.open(arrayBuffer);
+            // Fix for Safari local execution - use the ArrayBuffer directly without ePub() resolving URLs
+            book = ePub(arrayBuffer); 
 
             book.loaded.metadata.then(meta => {
                 document.getElementById('book-title').textContent = meta.title || file.name;
@@ -218,12 +216,18 @@
             rendition.hooks.content.register(function(contents) {
                 const docEl = contents.document.documentElement;
 
-                // Inject the dynamic language variable 
                 docEl.setAttribute('lang', currentLang);
                 docEl.style.setProperty('-webkit-locale', `"${currentLang}"`, 'important');
                 contents.document.body.style.overflow = 'hidden';
 
-                // --- 3x3 Grid Navigation Gesture Logic ---
+                // --- Fix for Safari iframe redraw issue ---
+                const iframe = contents.document.defaultView.frameElement;
+                if (iframe) {
+                    iframe.style.transform = "translateZ(0)";
+                    iframe.offsetWidth; // Trigger reflow
+                    iframe.style.transform = null;
+                }
+
                 contents.document.addEventListener('click', function(e) {
                     const selection = contents.window.getSelection();
                     if (selection && selection.toString().length > 0) return;
