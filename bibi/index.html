@@ -4,9 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Native Safari EPUB Reader</title>
-
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-
     <style>
         :root {
             --bg-color: #f5f5f7;
@@ -17,7 +15,6 @@
             --btn-bg: #007aff;
             --btn-hover: #0056b3;
         }
-
         body.dark-mode {
             --bg-color: #121212;
             --panel-bg: #1e1e1e;
@@ -27,9 +24,8 @@
             --btn-bg: #0a84ff;
             --btn-hover: #0066cc;
         }
-
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", "맑은 고딕", sans-serif; 
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", "맑은 고딕", sans-serif;
             margin: 0; padding: 0;
             background-color: var(--bg-color);
             color: var(--text-color);
@@ -43,9 +39,7 @@
             display: flex; gap: 15px; align-items: center;
             transition: all 0.3s ease; flex-wrap: wrap;
         }
-        select, input[type="file"] {
-            color: var(--text-color);
-        }
+        select, input[type="file"] { color: var(--text-color); }
         select {
             padding: 8px 12px; border-radius: 6px;
             border: 1px solid var(--border-color);
@@ -61,26 +55,24 @@
         }
         #sidebar h3 { margin-top: 0; font-size: 1rem; color: var(--text-color); opacity: 0.8; }
         #toc-list { list-style: none; padding: 0; margin: 0; }
-        #toc-list li { 
-            padding: 8px 10px; cursor: pointer; border-radius: 4px; 
+        #toc-list li {
+            padding: 8px 10px; cursor: pointer; border-radius: 4px;
             font-size: 0.95rem; white-space: nowrap; overflow: hidden;
-            text-overflow: ellipsis; margin-bottom: 5px; 
+            text-overflow: ellipsis; margin-bottom: 5px;
             color: var(--text-color);
         }
         #toc-list li:hover { background: var(--hover-bg); color: var(--btn-bg); }
         #toc-list li.active { background: var(--hover-bg); font-weight: bold; border-left: 3px solid var(--btn-bg); }
-
         #viewer-container {
             flex: 1; padding: 20px; display: flex; flex-direction: column;
-            background: var(--bg-color); overflow: hidden; 
+            background: var(--bg-color); overflow: hidden;
         }
-        #viewer { 
-            flex: 1; border: 1px solid var(--border-color); 
+        #viewer {
+            flex: 1; border: 1px solid var(--border-color);
             background: var(--panel-bg); border-radius: 8px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.04);
             overflow: hidden; position: relative;
         }
-
         .nav-buttons { margin-top: 15px; display: flex; gap: 10px; justify-content: center; transition: all 0.3s ease; }
         button {
             padding: 10px 20px; background: var(--btn-bg); color: white;
@@ -88,12 +80,9 @@
         }
         button:hover { background: var(--btn-hover); }
         button:disabled { background: var(--border-color); color: #888; cursor: not-allowed; }
-
         #theme-toggle { background: transparent; border: 1px solid var(--border-color); color: var(--text-color); }
         #theme-toggle:hover { background: var(--hover-bg); }
-
         .hidden { display: none !important; }
-
         #focus-toggle {
             position: fixed; bottom: 25px; right: 25px;
             background: #333; color: white; border: none;
@@ -102,9 +91,8 @@
             z-index: 1000; font-size: 0.9rem; opacity: 0.6; transition: opacity 0.3s;
         }
         #focus-toggle:hover { opacity: 1; }
-
         #loading-overlay {
-            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            position: absolute; inset: 0;
             background: var(--panel-bg); display: flex; justify-content: center;
             align-items: center; z-index: 500; font-weight: bold; color: var(--text-color);
             flex-direction: column; gap: 10px; opacity: 0.9;
@@ -117,10 +105,8 @@
     </style>
 </head>
 <body>
-
     <header id="main-header">
         <input type="file" id="file-picker" accept=".epub" />
-
         <select id="lang-selector" title="Page Translation Language">
             <option value="ko" selected>Korean (KR)</option>
             <option value="ja">Japanese (JP)</option>
@@ -128,9 +114,7 @@
             <option value="zh-CN">Chinese (Simplified)</option>
             <option value="zh-TW">Chinese (Traditional)</option>
         </select>
-
         <button id="theme-toggle">🌙 Dark Mode</button>
-
         <span id="book-title" style="font-weight: bold; margin-left: 10px;">Please select a local book file...</span>
     </header>
 
@@ -141,7 +125,6 @@
                 <li style="color:#aaa; cursor:default;">Upload an EPUB file to view content links.</li>
             </ul>
         </div>
-
         <div id="viewer-container">
             <div id="viewer">
                 <div id="loading-overlay" class="hidden">
@@ -155,322 +138,459 @@
             </div>
         </div>
     </div>
-
     <button id="focus-toggle">Toggle Reading Mode</button>
 
 <script>
-    let epubZip = null;
-    let epubManifest = {};
-    let epubSpine = [];
-    let epubBasePath = "";
-    let epubToc = [];
+let epubZip = null;
+let epubManifest = {};
+let epubSpine = [];
+let epubBasePath = "";
+let epubToc = [];
+let currentChapterIndex = 0;
+let currentLang = 'ko';
+let isDarkMode = false;
 
-    let currentChapterIndex = 0;
-    let currentLang = 'ko';
-    let isDarkMode = false;
+const loadingOverlay = document.getElementById('loading-overlay');
+const loadingText = document.getElementById('loading-text');
 
-    const loadingOverlay = document.getElementById('loading-overlay');
-    const loadingText = document.getElementById('loading-text');
+const chapterState = {
+    iframe: null,
+    pageWidth: 0,
+    maxPages: 1,
+    currentPage: 0,
+    resizeTimer: null
+};
 
-    document.getElementById('lang-selector').addEventListener('change', e => {
-        currentLang = e.target.value;
-        document.documentElement.setAttribute('lang', currentLang);
-        if(epubZip) renderChapter(); 
-    });
+document.getElementById('lang-selector').addEventListener('change', e => {
+    currentLang = e.target.value;
+    document.documentElement.setAttribute('lang', currentLang);
+    if (epubZip) renderChapter();
+});
 
-    document.getElementById('theme-toggle').addEventListener('click', () => {
-        isDarkMode = !isDarkMode;
-        document.body.classList.toggle('dark-mode', isDarkMode);
-        document.getElementById('theme-toggle').textContent = isDarkMode ? '☀️ Light Mode' : '🌙 Dark Mode';
-        if(epubZip) renderChapter(); 
-    });
+document.getElementById('theme-toggle').addEventListener('click', () => {
+    isDarkMode = !isDarkMode;
+    document.body.classList.toggle('dark-mode', isDarkMode);
+    document.getElementById('theme-toggle').textContent = isDarkMode ? '☀️ Light Mode' : '🌙 Dark Mode';
+    if (epubZip) renderChapter();
+});
 
-    function resolvePath(base, relative) {
-        if (!base) return relative;
-        const stack = base.split('/').filter(p => p);
-        const parts = relative.split('/');
-        for(let p of parts) {
-            if (p === '..') stack.pop();
-            else if (p !== '.' && p !== '') stack.push(p);
-        }
-        return stack.join('/');
+function resolvePath(base, relative) {
+    if (!base) return relative;
+    const stack = base.split('/').filter(Boolean);
+    const parts = relative.split('/');
+    for (const p of parts) {
+        if (p === '..') stack.pop();
+        else if (p !== '.' && p !== '') stack.push(p);
     }
+    return stack.join('/');
+}
 
-    document.getElementById('file-picker').addEventListener('change', async function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
+document.getElementById('file-picker').addEventListener('change', async function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
 
-        document.getElementById('book-title').textContent = file.name;
-        loadingOverlay.classList.remove('hidden');
-        loadingText.textContent = "Unzipping locally...";
+    document.getElementById('book-title').textContent = file.name;
+    loadingOverlay.classList.remove('hidden');
+    loadingText.textContent = 'Unzipping locally...';
 
-        try {
-            const arrayBuffer = await file.arrayBuffer();
-            epubZip = await JSZip.loadAsync(arrayBuffer);
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        epubZip = await JSZip.loadAsync(arrayBuffer);
+        loadingText.textContent = 'Parsing book structure...';
+        const parser = new DOMParser();
 
-            loadingText.textContent = "Parsing book structure...";
-            const parser = new DOMParser();
+        const containerXml = await epubZip.file('META-INF/container.xml').async('text');
+        const containerDoc = parser.parseFromString(containerXml, 'text/xml');
+        const opfPath = containerDoc.querySelector('rootfile').getAttribute('full-path');
+        epubBasePath = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : '';
 
-            const containerXml = await epubZip.file("META-INF/container.xml").async("text");
-            const containerDoc = parser.parseFromString(containerXml, "text/xml");
-            const opfPath = containerDoc.querySelector("rootfile").getAttribute("full-path");
-            epubBasePath = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : "";
+        const opfXml = await epubZip.file(opfPath).async('text');
+        const opfDoc = parser.parseFromString(opfXml, 'text/xml');
 
-            const opfXml = await epubZip.file(opfPath).async("text");
-            const opfDoc = parser.parseFromString(opfXml, "text/xml");
+        const titleNode = opfDoc.getElementsByTagName('dc:title')[0];
+        if (titleNode) document.getElementById('book-title').textContent = titleNode.textContent;
 
-            const titleNode = opfDoc.getElementsByTagName("dc:title")[0];
-            if (titleNode) document.getElementById('book-title').textContent = titleNode.textContent;
+        epubManifest = {};
+        let ncxHref = null;
+        const items = opfDoc.getElementsByTagName('item');
+        for (let i = 0; i < items.length; i++) {
+            const id = items[i].getAttribute('id');
+            const href = items[i].getAttribute('href');
+            const mediaType = items[i].getAttribute('media-type');
+            epubManifest[id] = href;
+            if (mediaType === 'application/x-dtbncx+xml') ncxHref = href;
+        }
 
-            epubManifest = {};
-            let ncxHref = null;
-            const items = opfDoc.getElementsByTagName("item");
-            for (let i=0; i<items.length; i++) {
-                const id = items[i].getAttribute("id");
-                const href = items[i].getAttribute("href");
-                const mediaType = items[i].getAttribute("media-type");
-                epubManifest[id] = href;
-                if (mediaType === "application/x-dtbncx+xml") ncxHref = href;
-            }
+        epubSpine = [];
+        const itemrefs = opfDoc.getElementsByTagName('itemref');
+        for (let i = 0; i < itemrefs.length; i++) {
+            const idref = itemrefs[i].getAttribute('idref');
+            if (epubManifest[idref]) epubSpine.push(epubManifest[idref]);
+        }
 
-            epubSpine = [];
-            const itemrefs = opfDoc.getElementsByTagName("itemref");
-            for (let i=0; i<itemrefs.length; i++) {
-                const idref = itemrefs[i].getAttribute("idref");
-                if (epubManifest[idref]) epubSpine.push(epubManifest[idref]);
-            }
-
-            epubToc = [];
-            if (ncxHref) {
-                try {
-                    const ncxPath = resolvePath(epubBasePath, ncxHref);
-                    const ncxFile = epubZip.file(ncxPath);
-                    if (ncxFile) {
-                        const ncxStr = await ncxFile.async("text");
-                        const ncxDoc = parser.parseFromString(ncxStr, "text/xml");
-                        const navPoints = ncxDoc.getElementsByTagName("navPoint");
-                        for (let i=0; i<navPoints.length; i++) {
-                            const label = navPoints[i].getElementsByTagName("text")[0].textContent;
-                            const src = navPoints[i].getElementsByTagName("content")[0].getAttribute("src");
-                            epubToc.push({ label, href: src });
+        epubToc = [];
+        if (ncxHref) {
+            try {
+                const ncxPath = resolvePath(epubBasePath, ncxHref);
+                const ncxFile = epubZip.file(ncxPath);
+                if (ncxFile) {
+                    const ncxStr = await ncxFile.async('text');
+                    const ncxDoc = parser.parseFromString(ncxStr, 'text/xml');
+                    const navPoints = ncxDoc.getElementsByTagName('navPoint');
+                    for (let i = 0; i < navPoints.length; i++) {
+                        const labelNode = navPoints[i].getElementsByTagName('text')[0];
+                        const contentNode = navPoints[i].getElementsByTagName('content')[0];
+                        if (labelNode && contentNode) {
+                            epubToc.push({ label: labelNode.textContent, href: contentNode.getAttribute('src') });
                         }
                     }
-                } catch(err) { console.warn("NCX parse error", err); }
+                }
+            } catch (err) {
+                console.warn('NCX parse error', err);
             }
+        }
 
-            if (epubToc.length === 0) {
-                epubSpine.forEach((href, i) => epubToc.push({ label: "Chapter " + (i+1), href }));
+        if (epubToc.length === 0) {
+            epubSpine.forEach((href, i) => epubToc.push({ label: 'Chapter ' + (i + 1), href }));
+        }
+
+        buildTocUI();
+        currentChapterIndex = 0;
+        await renderChapter();
+    } catch (error) {
+        loadingText.textContent = 'Error: ' + error.message;
+        console.error(error);
+    }
+});
+
+function buildTocUI() {
+    const tocEl = document.getElementById('toc-list');
+    tocEl.innerHTML = '';
+    epubToc.forEach(item => {
+        const li = document.createElement('li');
+        li.textContent = item.label.trim();
+        li.onclick = () => {
+            const targetHref = item.href.split('#')[0];
+            const idx = epubSpine.findIndex(s => s === targetHref || targetHref.endsWith(s));
+            if (idx !== -1) {
+                currentChapterIndex = idx;
+                renderChapter();
             }
+        };
+        tocEl.appendChild(li);
+    });
+}
 
-            buildTocUI();
-            currentChapterIndex = 0;
-            renderChapter();
+async function processChapterHtml(html, chapHref) {
+    const chapDir = chapHref.includes('/') ? chapHref.substring(0, chapHref.lastIndexOf('/') + 1) : '';
+    const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    let bodyContent = bodyMatch ? bodyMatch[1] : html;
 
-        } catch (error) {
-            loadingText.textContent = "Error: " + error.message;
-            console.error(error);
+    const styles = [];
+    const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi;
+    let sMatch;
+    while ((sMatch = styleRegex.exec(html))) styles.push(sMatch[1]);
+
+    const linkRegex = /<link[^>]+href=["']([^"']+)["']/gi;
+    let lMatch;
+    while ((lMatch = linkRegex.exec(html))) {
+        const href = lMatch[1];
+        if (href.includes('://') || href.startsWith('data:')) continue;
+        const file = epubZip.file(resolvePath(chapDir, href));
+        if (file) styles.push(await file.async('text'));
+    }
+
+    const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
+    let iMatch;
+    const imgSources = new Set();
+    while ((iMatch = imgRegex.exec(bodyContent))) imgSources.add(iMatch[1]);
+
+    for (const src of imgSources) {
+        if (src.includes('://') || src.startsWith('data:')) continue;
+        const fullPath = resolvePath(chapDir, src);
+        const file = epubZip.file(fullPath);
+        if (file) {
+            const b64 = await file.async('base64');
+            const ext = fullPath.split('.').pop().toLowerCase();
+            let mime = 'image/png';
+            if (ext === 'jpg' || ext === 'jpeg') mime = 'image/jpeg';
+            else if (ext === 'svg') mime = 'image/svg+xml';
+            else if (ext === 'gif') mime = 'image/gif';
+            bodyContent = bodyContent.split(src).join(`data:${mime};base64,${b64}`);
+        }
+    }
+
+    return { body: bodyContent, css: styles.join('\n') };
+}
+
+function getViewerPageWidth() {
+    const viewer = document.getElementById('viewer');
+    return Math.max(1, Math.floor(viewer.clientWidth));
+}
+
+function goToPage(pageIndex) {
+    if (!chapterState.iframe) return;
+    chapterState.currentPage = Math.max(0, Math.min(pageIndex, chapterState.maxPages - 1));
+    chapterState.iframe.contentWindow.postMessage({
+        type: 'SET_PAGE',
+        page: chapterState.currentPage,
+        width: chapterState.pageWidth
+    }, '*');
+}
+
+function nextStep() {
+    if (chapterState.currentPage < chapterState.maxPages - 1) {
+        goToPage(chapterState.currentPage + 1);
+    } else if (currentChapterIndex < epubSpine.length - 1) {
+        currentChapterIndex++;
+        renderChapter();
+    }
+}
+
+function prevStep() {
+    if (chapterState.currentPage > 0) {
+        goToPage(chapterState.currentPage - 1);
+    } else if (currentChapterIndex > 0) {
+        currentChapterIndex--;
+        renderChapter();
+    }
+}
+
+function updateNavButtons() {
+    const prevDisabled = currentChapterIndex === 0 && chapterState.currentPage === 0;
+    const nextDisabled = currentChapterIndex === epubSpine.length - 1 && chapterState.currentPage >= chapterState.maxPages - 1;
+    document.getElementById('prev-btn').disabled = prevDisabled;
+    document.getElementById('next-btn').disabled = nextDisabled;
+}
+
+async function renderChapter() {
+    if (!epubZip || epubSpine.length === 0) return;
+    loadingOverlay.classList.remove('hidden');
+    loadingText.textContent = 'Rendering Chapter...';
+
+    const chapHref = epubSpine[currentChapterIndex];
+    const fullPath = resolvePath(epubBasePath, chapHref);
+    const file = epubZip.file(fullPath);
+
+    if (!file) {
+        loadingText.textContent = 'Chapter not found in archive.';
+        return;
+    }
+
+    chapterState.currentPage = 0;
+    chapterState.maxPages = 1;
+    chapterState.pageWidth = getViewerPageWidth();
+
+    const rawHtml = await file.async('text');
+    const processed = await processChapterHtml(rawHtml, fullPath);
+
+    const lis = document.getElementById('toc-list').getElementsByTagName('li');
+    Array.from(lis).forEach(li => li.classList.remove('active'));
+    const activeIdx = epubToc.findIndex(t => t.href.split('#')[0] === chapHref);
+    if (activeIdx !== -1 && lis[activeIdx]) lis[activeIdx].classList.add('active');
+
+    const fontColor = isDarkMode ? '#e0e0e0' : '#333333';
+    const bgColor = isDarkMode ? '#1e1e1e' : '#ffffff';
+    const linkColor = isDarkMode ? '#5dade2' : '#0056b3';
+    const safeCss = processed.css.replace(/`/g, '\\`');
+    const safeBody = processed.body.replace(/`/g, '\\`');
+
+    const iframeDoc = `<!DOCTYPE html>
+<html lang="${currentLang}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: ${bgColor};
+}
+body {
+    -webkit-locale: '${currentLang}';
+    font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", sans-serif;
+    color: ${fontColor};
+}
+#viewport {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    position: relative;
+    background: ${bgColor};
+}
+#content {
+    height: 100%;
+    column-gap: 0;
+    column-fill: auto;
+    overflow: hidden;
+    will-change: transform;
+}
+#content > *:first-child { margin-top: 0 !important; }
+#content > *:last-child { margin-bottom: 0 !important; }
+body, #content, #content * {
+    box-sizing: border-box;
+}
+img, svg, video, canvas {
+    max-width: 100% !important;
+    height: auto !important;
+}
+a { color: ${linkColor}; }
+${safeCss}
+</style>
+</head>
+<body>
+<div id="viewport"><div id="content">${safeBody}</div></div>
+<script>
+(function(){
+    let currentPage = 0;
+    let maxPages = 1;
+    let pageWidth = Math.max(1, Math.floor(window.innerWidth));
+    const content = document.getElementById('content');
+
+    function applyPageMetrics() {
+        pageWidth = Math.max(1, Math.floor(window.innerWidth));
+        content.style.width = 'auto';
+        content.style.height = window.innerHeight + 'px';
+        content.style.padding = '20px';
+        content.style.columnWidth = (pageWidth - 40) + 'px';
+        content.style.columnGap = '0px';
+        content.style.minHeight = window.innerHeight + 'px';
+    }
+
+    function recalcPages() {
+        applyPageMetrics();
+        const rawPages = Math.ceil(content.scrollWidth / pageWidth);
+        maxPages = Math.max(1, rawPages);
+        if (currentPage > maxPages - 1) currentPage = maxPages - 1;
+        snapToPage(false);
+        window.parent.postMessage({ type: 'PAGINATION_INFO', page: currentPage, maxPages: maxPages, width: pageWidth }, '*');
+    }
+
+    function snapToPage(report = true) {
+        const targetX = currentPage * pageWidth;
+        content.style.transform = 'translate3d(' + (-targetX) + 'px, 0, 0)';
+        if (report) {
+            window.parent.postMessage({ type: 'PAGE_CHANGED', page: currentPage, maxPages: maxPages, width: pageWidth }, '*');
+        }
+    }
+
+    function nextPage() {
+        if (currentPage < maxPages - 1) {
+            currentPage += 1;
+            snapToPage();
+        } else {
+            window.parent.postMessage({ type: 'NEXT_CHAPTER' }, '*');
+        }
+    }
+
+    function prevPage() {
+        if (currentPage > 0) {
+            currentPage -= 1;
+            snapToPage();
+        } else {
+            window.parent.postMessage({ type: 'PREV_CHAPTER' }, '*');
+        }
+    }
+
+    document.addEventListener('click', function(e) {
+        const sel = window.getSelection();
+        if (sel && sel.toString().length > 0) return;
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        const col = Math.min(2, Math.floor((e.clientX / w) * 3));
+        const row = Math.min(2, Math.floor((e.clientY / h) * 3));
+        if (row === 0 && (col === 0 || col === 1)) {
+            prevPage();
+        } else if (row === 1 && col === 1) {
+            window.parent.postMessage({ type: 'TOGGLE_MENU' }, '*');
+        } else {
+            nextPage();
         }
     });
-
-    function buildTocUI() {
-        const tocEl = document.getElementById('toc-list');
-        tocEl.innerHTML = '';
-        epubToc.forEach(item => {
-            const li = document.createElement('li');
-            li.textContent = item.label.trim();
-            li.onclick = () => {
-                const targetHref = item.href.split('#')[0];
-                const idx = epubSpine.findIndex(s => s === targetHref || targetHref.endsWith(s));
-                if (idx !== -1) {
-                    currentChapterIndex = idx;
-                    renderChapter();
-                }
-            };
-            tocEl.appendChild(li);
-        });
-    }
-
-    async function processChapterHtml(html, chapHref) {
-        const chapDir = chapHref.includes('/') ? chapHref.substring(0, chapHref.lastIndexOf('/') + 1) : "";
-
-        const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-        let bodyContent = bodyMatch ? bodyMatch[1] : html;
-
-        const styles = [];
-        const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi;
-        let sMatch;
-        while ((sMatch = styleRegex.exec(html))) styles.push(sMatch[1]);
-
-        const linkRegex = /<link[^>]+href=["']([^"']+)["']/gi;
-        let lMatch;
-        while ((lMatch = linkRegex.exec(html))) {
-            const href = lMatch[1];
-            if(href.includes("://") || href.startsWith("data:")) continue;
-            const file = epubZip.file(resolvePath(chapDir, href));
-            if (file) styles.push(await file.async("text"));
-        }
-
-        const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
-        let iMatch;
-        const imgSources = new Set();
-        while ((iMatch = imgRegex.exec(bodyContent))) imgSources.add(iMatch[1]);
-
-        for (let src of imgSources) {
-            if(src.includes("://") || src.startsWith("data:")) continue;
-            const fullPath = resolvePath(chapDir, src);
-            const file = epubZip.file(fullPath);
-            if (file) {
-                const b64 = await file.async("base64");
-                let ext = fullPath.split('.').pop().toLowerCase();
-                let mime = "image/png";
-                if(ext === "jpg" || ext === "jpeg") mime = "image/jpeg";
-                else if(ext === "svg") mime = "image/svg+xml";
-                else if(ext === "gif") mime = "image/gif";
-
-                bodyContent = bodyContent.split(src).join(`data:${mime};base64,${b64}`);
-            }
-        }
-
-        return { body: bodyContent, css: styles.join('\n') };
-    }
-
-    async function renderChapter() {
-        if (!epubZip || epubSpine.length === 0) return;
-        loadingOverlay.classList.remove('hidden');
-        loadingText.textContent = "Rendering Chapter...";
-
-        const chapHref = epubSpine[currentChapterIndex];
-        const fullPath = resolvePath(epubBasePath, chapHref);
-        const file = epubZip.file(fullPath);
-
-        if (!file) {
-            loadingText.textContent = "Chapter not found in archive.";
-            return;
-        }
-
-        const rawHtml = await file.async("text");
-        const processed = await processChapterHtml(rawHtml, fullPath);
-
-        const lis = document.getElementById('toc-list').getElementsByTagName('li');
-        Array.from(lis).forEach(li => li.classList.remove('active'));
-        const activeIdx = epubToc.findIndex(t => t.href.split('#')[0] === chapHref);
-        if(activeIdx !== -1 && lis[activeIdx]) lis[activeIdx].classList.add('active');
-
-        document.getElementById('prev-btn').disabled = (currentChapterIndex === 0);
-        document.getElementById('next-btn').disabled = (currentChapterIndex === epubSpine.length - 1);
-
-        const fontColor = isDarkMode ? '#e0e0e0' : '#333333';
-
-        // Escape backticks inside the CSS and body to prevent early termination of the string template literal
-        const safeCss = processed.css.replace(/`/g, '\\`');
-        const safeBody = processed.body.replace(/`/g, '\\`');
-
-        // THE FIX: We must escape the literal backticks inside the script tag otherwise JS evaluates it as syntax errors when setting srcdoc
-        const iframeDoc = `
-        <!DOCTYPE html>
-        <html lang="${currentLang}">
-        <head>
-            <meta charset="utf-8">
-            <style>
-                body {
-                    margin: 0; padding: 20px; box-sizing: border-box;
-                    width: 100vw; height: 100vh; overflow: hidden;
-                    font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", sans-serif;
-                    line-height: 1.6; color: ${fontColor}; background: transparent;
-                }
-                #content {
-                    column-width: calc(100vw - 40px);
-                    column-gap: 40px;
-                    height: calc(100vh - 40px);
-                    margin: 0; padding: 0;
-                    transition: transform 0.25s ease;
-                    word-wrap: break-word;
-                }
-                img { max-width: 100%; height: auto; max-height: 100vh; object-fit: contain; }
-                a { color: ${isDarkMode ? '#5dade2' : '#0056b3'}; }
-                ${safeCss}
-            </style>
-        </head>
-        <body style="-webkit-locale: '${currentLang}';">
-            <div id="content">${safeBody}</div>
-            <script>
-                let currentPage = 0;
-                let maxPages = 1;
-
-                function calcPages() {
-                    const content = document.getElementById('content');
-                    maxPages = Math.max(1, Math.round(content.scrollWidth / window.innerWidth));
-                    if(currentPage >= maxPages) currentPage = maxPages - 1;
-                    updateTransform();
-                }
-
-                function updateTransform() {
-                    const content = document.getElementById('content');
-                    content.style.transform = 'translateX(-' + (currentPage * window.innerWidth) + 'px)';
-                }
-
-                window.addEventListener('resize', calcPages);
-                setTimeout(calcPages, 50);
-                setTimeout(calcPages, 300); 
-
-                document.addEventListener('click', function(e) {
-                    const sel = window.getSelection();
-                    if (sel && sel.toString().length > 0) return;
-
-                    const w = window.innerWidth;
-                    const h = window.innerHeight;
-                    const col = Math.floor((e.clientX / w) * 3);
-                    const row = Math.floor((e.clientY / h) * 3);
-
-                    if (row === 0 && (col === 0 || col === 1)) {
-                        if (currentPage > 0) { currentPage--; updateTransform(); }
-                        else { window.parent.postMessage('PREV_CHAPTER', '*'); }
-                    } else if (row === 1 && col === 1) {
-                        window.parent.postMessage('TOGGLE_MENU', '*');
-                    } else {
-                        if (currentPage < maxPages - 1) { currentPage++; updateTransform(); }
-                        else { window.parent.postMessage('NEXT_CHAPTER', '*'); }
-                    }
-                });
-            <\/script>
-        </body>
-        </html>
-        `;
-
-        const container = document.getElementById('viewer');
-        container.innerHTML = '';
-        const iframe = document.createElement('iframe');
-        iframe.style.width = '100%';
-        iframe.style.height = '100%';
-        iframe.style.border = 'none';
-        iframe.style.background = 'transparent';
-
-        iframe.srcdoc = iframeDoc; 
-
-        iframe.onload = () => { loadingOverlay.classList.add('hidden'); };
-        container.appendChild(iframe);
-    }
 
     window.addEventListener('message', function(e) {
-        if (e.data === 'PREV_CHAPTER') document.getElementById('prev-btn').click();
-        else if (e.data === 'NEXT_CHAPTER') document.getElementById('next-btn').click();
-        else if (e.data === 'TOGGLE_MENU') document.getElementById('focus-toggle').click();
+        const data = e.data || {};
+        if (data.type === 'SET_PAGE') {
+            if (typeof data.page === 'number') currentPage = Math.max(0, Math.min(data.page, maxPages - 1));
+            snapToPage();
+        } else if (data.type === 'RECALC_PAGES') {
+            recalcPages();
+        }
     });
 
-    document.getElementById('prev-btn').onclick = () => {
-        if (currentChapterIndex > 0) { currentChapterIndex--; renderChapter(); }
-    };
-    document.getElementById('next-btn').onclick = () => {
-        if (currentChapterIndex < epubSpine.length - 1) { currentChapterIndex++; renderChapter(); }
-    };
+    window.addEventListener('resize', recalcPages);
+    window.addEventListener('load', recalcPages);
+    setTimeout(recalcPages, 50);
+    setTimeout(recalcPages, 250);
+    setTimeout(recalcPages, 800);
+})();
+<\/script>
+</body>
+</html>`;
 
-    document.getElementById('focus-toggle').addEventListener('click', () => {
-        document.getElementById('main-header').classList.toggle('hidden');
-        document.getElementById('sidebar').classList.toggle('hidden');
-        document.getElementById('bottom-nav').classList.toggle('hidden');
-    });
+    const container = document.getElementById('viewer');
+    container.innerHTML = '';
+    const iframe = document.createElement('iframe');
+    iframe.style.width = '100%';
+    iframe.style.height = '100%';
+    iframe.style.border = 'none';
+    iframe.style.background = 'transparent';
+    iframe.srcdoc = iframeDoc;
+    iframe.onload = () => {
+        chapterState.iframe = iframe;
+        loadingOverlay.classList.add('hidden');
+        updateNavButtons();
+    };
+    container.appendChild(iframe);
+}
 
+window.addEventListener('message', function(e) {
+    const data = e.data || {};
+    if (data.type === 'PREV_CHAPTER') {
+        if (currentChapterIndex > 0) {
+            currentChapterIndex--;
+            renderChapter();
+        }
+    } else if (data.type === 'NEXT_CHAPTER') {
+        if (currentChapterIndex < epubSpine.length - 1) {
+            currentChapterIndex++;
+            renderChapter();
+        }
+    } else if (data.type === 'TOGGLE_MENU') {
+        document.getElementById('focus-toggle').click();
+    } else if (data.type === 'PAGE_CHANGED' || data.type === 'PAGINATION_INFO') {
+        chapterState.currentPage = typeof data.page === 'number' ? data.page : 0;
+        chapterState.maxPages = typeof data.maxPages === 'number' ? data.maxPages : 1;
+        chapterState.pageWidth = typeof data.width === 'number' ? data.width : getViewerPageWidth();
+        updateNavButtons();
+    }
+});
+
+document.getElementById('prev-btn').onclick = () => prevStep();
+document.getElementById('next-btn').onclick = () => nextStep();
+
+document.getElementById('focus-toggle').addEventListener('click', () => {
+    document.getElementById('main-header').classList.toggle('hidden');
+    document.getElementById('sidebar').classList.toggle('hidden');
+    document.getElementById('bottom-nav').classList.toggle('hidden');
+    clearTimeout(chapterState.resizeTimer);
+    chapterState.resizeTimer = setTimeout(() => {
+        if (chapterState.iframe && chapterState.iframe.contentWindow) {
+            chapterState.iframe.contentWindow.postMessage({ type: 'RECALC_PAGES' }, '*');
+        }
+    }, 120);
+});
+
+window.addEventListener('resize', () => {
+    clearTimeout(chapterState.resizeTimer);
+    chapterState.resizeTimer = setTimeout(() => {
+        if (chapterState.iframe && chapterState.iframe.contentWindow) {
+            chapterState.iframe.contentWindow.postMessage({ type: 'RECALC_PAGES' }, '*');
+        }
+    }, 120);
+});
 </script>
-
 </body>
 </html>
